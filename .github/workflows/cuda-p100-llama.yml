@@ -1,0 +1,76 @@
+name: Build llama.cpp (CUDA - Tesla P100)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (CUDA target: P100 / compute capability 6.0)
+    runs-on: ubuntu-latest
+    env:
+      CMAKE_BUILD_TYPE: Release
+      # compute capability 6.0 for Tesla P100
+      CMAKE_CUDA_ARCHITECTURES: "60"
+      CUDA_VERSION: "11.8"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Optional: initialize submodules if your repo uses them.
+      - name: Init submodules (if any)
+        if: always()
+        run: |
+          git submodule update --init --recursive || echo "no submodules or step failed"
+
+      - name: Set up CUDA toolkit
+        uses: nvidia/setup-cuda@v2
+        with:
+          cuda-version: ${{ env.CUDA_VERSION }}
+
+      - name: Verify CUDA toolchain
+        run: |
+          echo "nvcc:"
+          nvcc --version || true
+          echo "which nvcc: $(command -v nvcc || true)"
+          echo "gcc: $(gcc --version | head -n1 || true)"
+
+      - name: Build (CMake or Makefile)
+        run: |
+          set -e
+          # Prefer CMake if present
+          if [ -f CMakeLists.txt ]; then
+            echo "Detected CMakeLists.txt — doing CMake build with CUDA support"
+            cmake -S . -B build \
+              -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+              -DCMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES} \
+              -DLLAMA_CUBLAS=ON || \
+            cmake -S . -B build \
+              -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+              -DCMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}
+            cmake --build build --config ${CMAKE_BUILD_TYPE} -- -j$(nproc)
+          elif [ -f Makefile ]; then
+            echo "Detected Makefile — doing Make build with CUDA flags"
+            make clean || true
+            # Try common Make variables used by llama.cpp forks; adjust if your fork uses different vars.
+            MAKEFLAGS=-j$(nproc) make BUILD_CUDA=1 CUDA_ARCH=60 || \
+            MAKEFLAGS=-j$(nproc) make USE_CUDA=1 CUDA_ARCH=60 || \
+            MAKEFLAGS=-j$(nproc) make CUDA=1 CUDA_ARCH=60
+          else
+            echo "No CMakeLists.txt or Makefile found. Exiting."
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-cuda-p100-build
+          path: |
+            build
+            bin
+            ./main
