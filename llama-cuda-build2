@@ -1,0 +1,5 @@
+git init
+git add .
+git commit -m "Add CUDA P100 build workflow"
+git remote add origin https://github.com/xxtv-collab/llama-cuda-build.git
+git push -u origin main
