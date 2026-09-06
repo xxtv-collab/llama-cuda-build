@@ -22,9 +22,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Optional: initialize submodules if your repo uses them.
       - name: Init submodules (if any)
-        if: always()
         run: |
           git submodule update --init --recursive || echo "no submodules or step failed"
 
